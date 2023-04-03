@@ -3,9 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <title>Danh sách sinh viên</title>
+  <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js"
+          integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN"
+          crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js"
+          integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q"
+          crossorigin="anonymous"></script>
+  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js"
+          integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl"
+          crossorigin="anonymous"></script>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.3/jquery.min.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.0.0/dist/css/bootstrap.min.css"
         integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
-  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.3/jquery.min.js"></script>
+  
   <style>
       body {
           padding: 2em;
@@ -206,22 +216,71 @@
     </thead>
     <tbody>
     <div th:each="s,i:${students}">
-      <tr>
+      <tr th:id="'student-record-' + ${i.count}"
+          data-toggle="modal"
+          data-target="#exampleModalCenter"
+          th:data-row="${i.count}"
+          onclick="clickUpdateStudentScore(this.getAttribute('data-row'))">
         <td th:text="${i.count}"></td>
         <td th:text="${s.code}"></td>
         <td th:text="${s.lastName}"></td>
         <td th:text="${s.firstName}"></td>
         <td th:text="${s.gender}"></td>
         <td th:text="${#temporals.format(s.birthDate, 'dd/MM/yyyy')}"></td>
-        <td th:each="cs:${componentScores}">N/A</td>
-        <td th:text="${s.statusDescription}"></td>
+        <td th:if="${scoreMap.get(s.code)!=null}" th:each="cs:${componentScores}"
+            th:text="${scoreMap.get(s.code).get(cs.id)}"></td>
+        <td th:unless="${scoreMap.get(s.code)!=null}" th:each="cs:${componentScores}"></td>
+        <td th:style="${s.status==2?'color:#CC0000;':s.status==1?'color:#00CC00;':'color:#2D97FB;'}"
+            th:text="${s.statusDescription}"></td>
       </tr>
     </div>
     
     </tbody>
   </table>
+  
+  <!-- Modal -->
+  <div class="modal fade" id="exampleModalCenter" tabindex="-1" role="dialog" aria-labelledby="exampleModalCenterTitle"
+       aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="exampleModalLongTitle"></h5>
+          <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </div>
+        <div class="modal-body">
+          <form th:action="@{/student/score-update}" th:object="${dto}" method="post" name="score-update-form"
+                id="score-update-form">
+            <div th:each="cs:${componentScores}" class="form-group row">
+              <label class="col-sm-4 col-form-label"
+                     th:text="${cs.componentScoreName} + ' (' + ${cs.weight} + '%)'"></label>
+              <div class="col-sm-6">
+                <input
+                    type="number"
+                    min="0"
+                    max="10"
+                    step="0.25"
+                    class="form-control"
+                    th:id="'score-' + ${cs.id}"
+                    th:name="'comp-' + ${cs.id}"
+                    th:field="*{scoreMap[__${cs.id}__]}"
+                    onclick="this.select()">
+              </div>
+            </div>
+            <input th:field="*{studentCode}" hidden id="student-code" readonly>
+            <input th:field="*{classCode}" id="class-code" hidden readonly>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-dismiss="modal">Đóng</button>
+          <button type="submit" class="btn btn-primary" form="score-update-form">Cập nhật</button>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
-<script type="text/javascript">
+<script th:inline="javascript">
     const urlParams = new URLSearchParams(window.location.search);
     let codeInput = document.getElementById("codeInputField");
     let nameInput = document.getElementById("nameInputField");
@@ -254,6 +313,24 @@
         urlParams.append("page", page);
         var url = window.location.pathname.split("?")[0] + '?' + urlParams.toString();
         window.location.href = url;
+    }
+
+    function clickUpdateStudentScore(num) {
+        const studentInfoCollection = document.getElementById(`student-record-${num}`).children;
+        document.getElementById('exampleModalLongTitle').textContent = `${studentInfoCollection[2].textContent} ${studentInfoCollection[3].textContent} (${studentInfoCollection[1].textContent})`;
+        var student_score_map = new Map(Object.entries(/*[[${scoreMap}]]*/ {}));
+        let o = student_score_map.get(studentInfoCollection[1].textContent);
+        if (typeof (o) != "undefined") {
+            var score_map = new Map(Object.entries(o));
+            let inputsInForm = document.forms["score-update-form"].getElementsByTagName("input");
+            for (let i = 0; i < inputsInForm.length; i++) {
+                inputsInForm[i].value = score_map.get(inputsInForm[i].id.split("-")[1]);
+            }
+        } else {
+            document.forms["score-update-form"].reset();
+        }
+        document.getElementById("student-code").value = studentInfoCollection[1].textContent;
+        document.getElementById("class-code").value = /*[[${subjectClassCode}]]*/{};
     }
 </script>
 </body>

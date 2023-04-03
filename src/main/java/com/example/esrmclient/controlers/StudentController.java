@@ -4,6 +4,7 @@ import com.example.esrmclient.config.RestResponsePage;
 import com.example.esrmclient.config.StudentStatus;
 import com.example.esrmclient.dtos.PaginationData;
 import com.example.esrmclient.dtos.studentclass.StudentDetailDTO;
+import com.example.esrmclient.dtos.studentclass.StudentScoreDTO;
 import com.example.esrmclient.dtos.subjectclass.ComponentScoreDetail;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -13,14 +14,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.util.StringUtils;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 @Controller
 @Slf4j
@@ -35,11 +35,13 @@ public class StudentController {
       @PathVariable String classCode,
       @RequestParam(required = false) String code,
       @RequestParam(required = false) String name,
+      @RequestParam(required = false) String status,
       @RequestParam(required = false) String page) {
     String urlStudentList = String.format("http://localhost:8080/student/%s?size=30", classCode);
     StringBuilder urlBuilder = new StringBuilder(urlStudentList);
     if (StringUtils.hasText(code)) urlBuilder.append(String.format("&studentCode=%s", code));
     if (StringUtils.hasText(name)) urlBuilder.append(String.format("&fullName=%s", name));
+    if (StringUtils.hasText(status)) urlBuilder.append(String.format("&status=%s", status));
     int pagenum;
     try {
       pagenum = Integer.parseInt(page);
@@ -73,6 +75,29 @@ public class StudentController {
     model.addAttribute("componentScores", scoreDetails);
 
     model.addAttribute("studentStatus", List.of(StudentStatus.values()));
+
+    String getComponentScoreUrl =
+        String.format("http://localhost:8080/subject-class/student-score/%s", classCode);
+    ParameterizedTypeReference<Map<String, Map<Long, Double>>> reference1 =
+        new ParameterizedTypeReference<>() {};
+    Map<String, Map<Long, Double>> scoreMap =
+        restTemplate.exchange(getComponentScoreUrl, HttpMethod.GET, null, reference1).getBody();
+    model.addAttribute("scoreMap", scoreMap);
+    model.addAttribute("subjectClassCode", classCode);
+    model.addAttribute("dto", new StudentScoreDTO());
     return "studentListInClass";
+  }
+
+  @PostMapping(value = "/score-update")
+  public String updateStudentScore(@ModelAttribute StudentScoreDTO dto) {
+    Map<Long, Float> mapTemp =
+        dto.getScoreMap().entrySet().stream()
+            .filter(longFloatEntry -> longFloatEntry.getValue() != null)
+            .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+    dto.setScoreMap(mapTemp);
+    String updateStudentScoreEndpoint = "http://localhost:8080/student/score";
+    restTemplate.postForObject(updateStudentScoreEndpoint, dto, StudentScoreDTO.class);
+    log.info("studentCode: {}, classCode: {}", dto.getStudentCode(), dto.getClassCode());
+    return "redirect:/student/list/%s".formatted(dto.getClassCode());
   }
 }
